@@ -71,4 +71,9 @@ message Param {
 }
 
 message GrpcService {
+  oneof destination {
+    string proto_descriptor_str = 1;
+    string proto_descriptor_file_path = 2;
+ }
+  repeated string services = 3 [(google.api.field_behavior) = REQUIRED];
 }

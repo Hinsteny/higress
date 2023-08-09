@@ -132,11 +132,37 @@ spec:
                 anyOf:
                 - required:
                   - dubbo
-                - required:
+                - properties:
+                    grpc:
+                      oneOf:
+                      - not:
+                          anyOf:
+                          - required:
+                            - protoDescriptorStr
+                          - required:
+                            - protoDescriptorFilePath
+                      - required:
+                        - protoDescriptorStr
+                      - required:
+                        - protoDescriptorFilePath
+                  required:
                   - grpc
             - required:
               - dubbo
-            - required:
+            - properties:
+                grpc:
+                  oneOf:
+                  - not:
+                      anyOf:
+                      - required:
+                        - protoDescriptorStr
+                      - required:
+                        - protoDescriptorFilePath
+                  - required:
+                    - protoDescriptorStr
+                  - required:
+                    - protoDescriptorFilePath
+              required:
               - grpc
             properties:
               dubbo:
@@ -175,6 +201,15 @@ spec:
                     type: string
                 type: object
               grpc:
+                properties:
+                  protoDescriptorFilePath:
+                    type: string
+                  protoDescriptorStr:
+                    type: string
+                  services:
+                    items:
+                      type: string
+                    type: array
                 type: object
             type: object
           status:

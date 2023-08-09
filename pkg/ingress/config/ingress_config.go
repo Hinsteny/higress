@@ -1107,11 +1107,19 @@ func (m *IngressConfig) constructHttp2RpcEnvoyFilter(http2rpcConfig *annotations
 	}
 	http2rpcCRD := mappings[http2rpcConfig.Name]
 
-	if http2rpcCRD.GetDubbo() == nil {
-		IngressLog.Errorf("Http2RpcConfig name %s, only support Http2Rpc CRD Dubbo Service type", http2rpcConfig.Name)
-		return nil, errors.New("invalid http2rpcConfig has no useable http2rpc")
+	if http2rpcCRD.GetDubbo() != nil {
+		return m.constructHttp2DubboRpcEnvoyFilterConfig(http2rpcCRD, http2rpcConfig, route, m.namespace)
 	}
 
+	if http2rpcCRD.GetGrpc() != nil {
+		return m.constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD, http2rpcConfig, route, m.namespace)
+	}
+
+	IngressLog.Errorf("Http2RpcConfig name %s, config is invalid.", http2rpcConfig.Name)
+	return nil, errors.New("invalid http2rpcConfig has no useable http2rpc")
+}
+
+func (m *IngressConfig) constructHttp2DubboRpcEnvoyFilterConfig(http2rpcCRD *higressv1.Http2Rpc, http2rpcConfig *annotations.Http2RpcConfig, route *common.WrapperHTTPRoute, namespace string) (*config.Config, error) {
 	httpRoute := route.HTTPRoute
 	httpRouteDestination := httpRoute.Route[0]
 	typeStruct, err := m.constructHttp2RpcMethods(http2rpcCRD.GetDubbo())
@@ -1278,6 +1286,48 @@ func buildPatchStruct(config string) *types.Struct {
 	val := &types.Struct{}
 	_ = jsonpb.Unmarshal(strings.NewReader(config), val)
 	return val
+}
+
+func (m *IngressConfig) constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD *higressv1.Http2Rpc, http2rpcConfig *annotations.Http2RpcConfig, route *common.WrapperHTTPRoute, namespace string) (*config.Config, error) {
+	return &config.Config{
+		Meta: config.Meta{
+			GroupVersionKind: gvk.EnvoyFilter,
+			Name:             common.CreateConvertedName(constants.IstioIngressGatewayName, http2rpcConfig.Name),
+			Namespace:        namespace,
+		},
+		Spec: &networking.EnvoyFilter{
+			ConfigPatches: []*networking.EnvoyFilter_EnvoyConfigObjectPatch{
+				{
+					ApplyTo: networking.EnvoyFilter_HTTP_FILTER,
+					Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+						Context: networking.EnvoyFilter_GATEWAY,
+						ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_Listener{
+							Listener: &networking.EnvoyFilter_ListenerMatch{
+								FilterChain: &networking.EnvoyFilter_ListenerMatch_FilterChainMatch{
+									Filter: &networking.EnvoyFilter_ListenerMatch_FilterMatch{
+										Name: "envoy.filters.network.http_connection_manager",
+										SubFilter: &networking.EnvoyFilter_ListenerMatch_SubFilterMatch{
+											Name: "envoy.filters.http.router",
+										},
+									},
+								},
+							},
+						},
+					},
+					Patch: &networking.EnvoyFilter_Patch{
+						Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
+						Value: buildPatchStruct(`{
+							"name":"envoy.filters.http.grpc_json_transcoder",
+							"typed_config":{
+								"@type":"type.googleapis.com/udpa.type.v1.TypedStruct",
+								"type_url":"type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder"
+							}
+						}`),
+					},
+				},
+			},
+		},
+	}, nil
 }
 
 func constructBasicAuthEnvoyFilter(rules *common.BasicAuthRules, namespace string) (*config.Config, error) {
