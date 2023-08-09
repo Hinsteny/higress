@@ -519,6 +519,7 @@ func (m *IngressConfig) convertEnvoyFilter(convertOptions *common.ConvertOptions
 			if http2rpc != nil {
 				IngressLog.Infof("Found http2rpc for name %s", http2rpc.Name)
 				envoyFilter, err := m.constructHttp2RpcEnvoyFilter(http2rpc, route, m.namespace)
+				IngressLog.Infof("Construct http2rpc EnvoyFilter result %v", envoyFilter)
 				if err != nil {
 					IngressLog.Errorf("Construct http2rpc EnvoyFilter error %v", err)
 				} else {
@@ -1289,6 +1290,11 @@ func buildPatchStruct(config string) *types.Struct {
 }
 
 func (m *IngressConfig) constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD *higressv1.Http2Rpc, http2rpcConfig *annotations.Http2RpcConfig, route *common.WrapperHTTPRoute, namespace string) (*config.Config, error) {
+	grpcRouteFilter, err := m.constructHttp2GrpcRouteFilter(http2rpcCRD.GetGrpc())
+	if err != nil {
+		return nil, errors.New(err.Error())
+	}
+
 	return &config.Config{
 		Meta: config.Meta{
 			GroupVersionKind: gvk.EnvoyFilter,
@@ -1316,19 +1322,61 @@ func (m *IngressConfig) constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD *higress
 					},
 					Patch: &networking.EnvoyFilter_Patch{
 						Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
-						Value: buildPatchStruct(`{
-							"name":"envoy.filters.http.grpc_json_transcoder",
-							"typed_config":{
-								"@type":"type.googleapis.com/udpa.type.v1.TypedStruct",
-								"type_url":"type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder"
-							}
-						}`),
+						Value:     grpcRouteFilter,
 					},
 				},
 			},
 		},
 	}, nil
 }
+
+func (m *IngressConfig) constructHttp2GrpcRouteFilter(grpc *higressv1.GrpcService) (*types.Struct, error) {
+
+	var transcoderFilter = make(map[string]interface{})
+	transcoderFilter["name"] = "envoy.filters.http.grpc_json_transcoder"
+	var transcoderFilterTypedConfig = make(map[string]interface{})
+	transcoderFilter["typed_config"] = transcoderFilterTypedConfig
+	transcoderFilterTypedConfig["@type"] = "type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder"
+	transcoderFilterTypedConfig["proto_descriptor"] = grpc.GetProtoDescriptorFilePath()
+	transcoderFilterTypedConfig["services"] = grpc.GetServices()
+	transcoderFilterTypedConfig["match_incoming_request_route"] = true
+	transcoderFilterTypedConfig["auto_mapping"] = false
+
+	strBuffer := new(bytes.Buffer)
+	transcoderFilterJsonStr, _ := json.Marshal(transcoderFilter)
+	fmt.Fprint(strBuffer, string(transcoderFilterJsonStr))
+	IngressLog.Infof("Found http2grpc buildRouteFilter %s", strBuffer.String())
+	result := buildPatchStruct(strBuffer.String())
+	return result, nil
+}
+
+// func (m *IngressConfig) constructHttp2GrpcRouteFilter(grpc *higressv1.GrpcService) (*types.Struct, error) {
+// 	var httpFilters []interface{}
+// 	var transcoderFilter = make(map[string]interface{})
+// 	httpFilters = append(httpFilters, transcoderFilter)
+// 	transcoderFilter["name"] = "envoy.filters.http.grpc_json_transcoder"
+
+// 	var transcoderFilterTypedConfig = make(map[string]interface{})
+// 	transcoderFilter["typed_config"] = transcoderFilterTypedConfig
+// 	transcoderFilterTypedConfig["@type"] = "type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder"
+// 	transcoderFilterTypedConfig["proto_descriptor"] = grpc.GetProtoDescriptorFilePath()
+// 	transcoderFilterTypedConfig["services"] = grpc.GetServices()
+
+// 	var routerFilter = make(map[string]interface{})
+// 	httpFilters = append(httpFilters, routerFilter)
+// 	routerFilter["name"] = "envoy.filters.http.router"
+
+// 	var routerFilterTypedConfig = make(map[string]interface{})
+// 	routerFilter["typed_config"] = routerFilterTypedConfig
+// 	routerFilterTypedConfig["@type"] = "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+
+// 	strBuffer := new(bytes.Buffer)
+// 	httpFiltersJsonStr, _ := json.Marshal(httpFilters)
+// 	fmt.Fprint(strBuffer, string(httpFiltersJsonStr))
+// 	IngressLog.Infof("Found http2grpc buildRouteFilter %s", strBuffer.String())
+// 	result := buildPatchStruct(strBuffer.String())
+// 	return result, nil
+// }
 
 func constructBasicAuthEnvoyFilter(rules *common.BasicAuthRules, namespace string) (*config.Config, error) {
 	rulesStr, err := json.Marshal(rules)

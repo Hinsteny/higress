@@ -210,6 +210,8 @@ spec:
           - mountPath: /opt/plugins
             name: local-wasmplugins-volume
           {{- end }}
+          - mountPath: /opt/proto
+            name: local-proto-volume
       {{- if .Values.gateway.hostNetwork }}
       hostNetwork: {{ .Values.gateway.hostNetwork }}
       dnsPolicy: ClusterFirstWithHostNet
@@ -284,3 +286,7 @@ spec:
           path: /opt/plugins
           type: Directory
       {{- end }}
+      - name: local-proto-volume
+        hostPath:
+          path: /opt/proto
+          type: Directory

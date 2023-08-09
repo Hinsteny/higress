@@ -35,8 +35,8 @@ var HTTPRouteHttp2Grpc = suite.ConformanceTest{
 				Request: http.AssertionRequest{
 					ActualRequest: http.Request{
 						Host:   "foo.com",
-						Path:   "/dubbo/hello?name=higress",
-						Method: "GET",
+						Path:   "/grpc/helloworld.Greeter/SayHello?name=higress",
+						Method: "POST",
 					},
 				},
 				Response: http.AssertionResponse{

@@ -61,6 +61,8 @@ nodes:
   extraMounts:
     - hostPath: ${PROJECT_DIR}/plugins
       containerPath: /opt/plugins
+    - hostPath: ${PROJECT_DIR}/proto
+      containerPath: /opt/proto
 EOF
 
 ## Create kind cluster.
