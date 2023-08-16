@@ -19,7 +19,7 @@ metadata:
   namespace: higress-system
 spec:
   grpc:
-    protoDescriptorFilePath: "/opt/proto/helloworld.proto"
+    protoDescriptorFilePath: "/opt/proto/proto.pb"
     services:
     - "helloworld.Greeter"
 ---
@@ -37,7 +37,7 @@ spec:
     http:
       paths:
       - pathType: Prefix
-        path: /grpc
+        path: /helloworld.Greeter
         backend:
           service:
             name: grpc-server-demo-service

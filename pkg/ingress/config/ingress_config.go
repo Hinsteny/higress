@@ -1294,6 +1294,8 @@ func (m *IngressConfig) constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD *higress
 	if err != nil {
 		return nil, errors.New(err.Error())
 	}
+	httpRoute := route.HTTPRoute
+	httpRouteDestination := httpRoute.Route[0]
 
 	return &config.Config{
 		Meta: config.Meta{
@@ -1321,9 +1323,28 @@ func (m *IngressConfig) constructHttp2GrpcEnvoyFilterConfig(http2rpcCRD *higress
 						},
 					},
 					Patch: &networking.EnvoyFilter_Patch{
-						Operation: networking.EnvoyFilter_Patch_INSERT_BEFORE,
+						Operation: networking.EnvoyFilter_Patch_INSERT_AFTER,
 						Value:     grpcRouteFilter,
 					},
+				},
+				{
+					ApplyTo: networking.EnvoyFilter_CLUSTER,
+					Match: &networking.EnvoyFilter_EnvoyConfigObjectMatch{
+						ObjectTypes: &networking.EnvoyFilter_EnvoyConfigObjectMatch_Cluster{
+							Cluster: &networking.EnvoyFilter_ClusterMatch{
+								Service: httpRouteDestination.Destination.Host,
+							},
+						},
+					},
+					Patch: &networking.EnvoyFilter_Patch{
+						Operation: networking.EnvoyFilter_Patch_MERGE,
+						Value:     buildPatchStruct("{\"http2_protocol_options\": {}}"),
+					},
+				},
+			},
+			WorkloadSelector: &networking.WorkloadSelector{
+				Labels: map[string]string{
+					"name": "grpc-server-demo",
 				},
 			},
 		},
@@ -1341,6 +1362,12 @@ func (m *IngressConfig) constructHttp2GrpcRouteFilter(grpc *higressv1.GrpcServic
 	transcoderFilterTypedConfig["services"] = grpc.GetServices()
 	transcoderFilterTypedConfig["match_incoming_request_route"] = true
 	transcoderFilterTypedConfig["auto_mapping"] = false
+	var typedConfigOptions = make(map[string]interface{})
+	transcoderFilterTypedConfig["print_options"] = typedConfigOptions
+	typedConfigOptions["add_whitespace"] = true
+	typedConfigOptions["always_print_primitive_fields"] = true
+	typedConfigOptions["always_print_enums_as_ints"] = false
+	typedConfigOptions["preserve_proto_field_names"] = false
 
 	strBuffer := new(bytes.Buffer)
 	transcoderFilterJsonStr, _ := json.Marshal(transcoderFilter)
@@ -1349,34 +1376,6 @@ func (m *IngressConfig) constructHttp2GrpcRouteFilter(grpc *higressv1.GrpcServic
 	result := buildPatchStruct(strBuffer.String())
 	return result, nil
 }
-
-// func (m *IngressConfig) constructHttp2GrpcRouteFilter(grpc *higressv1.GrpcService) (*types.Struct, error) {
-// 	var httpFilters []interface{}
-// 	var transcoderFilter = make(map[string]interface{})
-// 	httpFilters = append(httpFilters, transcoderFilter)
-// 	transcoderFilter["name"] = "envoy.filters.http.grpc_json_transcoder"
-
-// 	var transcoderFilterTypedConfig = make(map[string]interface{})
-// 	transcoderFilter["typed_config"] = transcoderFilterTypedConfig
-// 	transcoderFilterTypedConfig["@type"] = "type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder"
-// 	transcoderFilterTypedConfig["proto_descriptor"] = grpc.GetProtoDescriptorFilePath()
-// 	transcoderFilterTypedConfig["services"] = grpc.GetServices()
-
-// 	var routerFilter = make(map[string]interface{})
-// 	httpFilters = append(httpFilters, routerFilter)
-// 	routerFilter["name"] = "envoy.filters.http.router"
-
-// 	var routerFilterTypedConfig = make(map[string]interface{})
-// 	routerFilter["typed_config"] = routerFilterTypedConfig
-// 	routerFilterTypedConfig["@type"] = "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
-
-// 	strBuffer := new(bytes.Buffer)
-// 	httpFiltersJsonStr, _ := json.Marshal(httpFilters)
-// 	fmt.Fprint(strBuffer, string(httpFiltersJsonStr))
-// 	IngressLog.Infof("Found http2grpc buildRouteFilter %s", strBuffer.String())
-// 	result := buildPatchStruct(strBuffer.String())
-// 	return result, nil
-// }
 
 func constructBasicAuthEnvoyFilter(rules *common.BasicAuthRules, namespace string) (*config.Config, error) {
 	rulesStr, err := json.Marshal(rules)
